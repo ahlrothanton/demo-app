@@ -1,0 +1,44 @@
+version: '3'
+services:
+  demo_app_db:
+    build: database/
+    ports:
+      - "5432:5432"
+    environment:
+      - "POSTGRES_HOST_AUTH_METHOD=trust"
+
+  demo_app_backend:
+    build: backend/
+    ports:
+      - 5000:5000
+    environment:
+      - "PORT=5000"
+      - "POSTGRES_SERVER=demo_app_db"
+      - "POSTGRES_CONNECTION=postgres"
+      - "POSTGRES_DB=postgres"
+      - "BACKEND_CORS_ORIGINS=*"
+    depends_on:
+      - "demo_app_db"
+    links:
+      - "demo_app_db"
+    restart: unless-stopped # workaround for db not being ready # TODO: setup wait-for-it for db
+
+  # demo_app_frontend:
+  #   build:
+  #     context: frontend/
+  #     dockerfile: docker/Dockerfile
+  #   ports:
+  #     - "80:80"
+  #   environment:
+  #     - "VUE_APP_API_URL=http://demo_app_backend:5000"
+  #   depends_on:
+  #    - demo_app_backend
+
+  demo_app_frontend:
+    build: demo-app-frontend/
+    ports:
+      - "80:80"
+    environment:
+      - "VUE_APP_API_URL=http://demo_app_backend:5000/api"
+    depends_on:
+     - demo_app_backend

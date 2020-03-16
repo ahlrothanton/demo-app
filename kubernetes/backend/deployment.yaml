@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-app-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      demo-app: backend
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        demo-app: backend
+    spec:
+      volumes:
+      - name: demo-app-secrets-volume
+        secret:
+          secretName: cloudsql-instance-credentials
+      containers:
+      - name: "demo-app-backend"
+        image: "gcr.io/GCP_PROJECT/demo-app-backend:latest"
+        ports:
+        - containerPort: 5000
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+        env:
+        - name: BACKEND_CORS_ORIGINS
+          value: '*'
+        - name: PORT
+          value: "5000"
+        - name: POSTGRES_CONNECTION
+          value: postgres:postgres123
+        - name: POSTGRES_DB
+          value: demo-app
+        - name: POSTGRES_SERVER
+          value: 127.0.0.1:5432
+      - name: cloudsql-proxy
+        image: "gcr.io/cloudsql-docker/gce-proxy:latest"
+        command: ["/cloud_sql_proxy", "-instances=SQL_CONNECTION_NAME=tcp:5432", "-credential_file=/secrets/cloudsql/credentials.json"]
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "1000m"
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+        securityContext:
+          runAsUser: 2  # non-root user
+          allowPrivilegeEscalation: false
+        volumeMounts:
+        - name: demo-app-secrets-volume
+          mountPath: /secrets/cloudsql
+          readOnly: true
+      restartPolicy: "Always"

@@ -1,3 +1,40 @@
+# macos files
+.DS_Store
+
+# python files
+__pycache__
+.pyc
+ files
+virtualenv
+venv
+__pycache__
+*.pyc
+
+# sed temp files
+*.yamle
+
+# node files
+node_modules
+/dist
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
