@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from db.session import Session
-from models.actor import Actor
+import uvicorn
+
 import json
 import logging
 
@@ -8,6 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
+
+from db.session import Session
+from models.actor import Actor
 
 
 # init
@@ -91,6 +94,10 @@ async def decrement_actor_vote(actor_id: int):
 
 
 if __name__ == "__main__":
-    import uvicorn
+    from core.config import GOOGLE_ENABLE_CLOUD_LOGGING
+    
+    if GOOGLE_ENABLE_CLOUD_LOGGING == 'True':
+        from core import logging
+        logging.use_logging_handler()
 
     uvicorn.run(app, host="0.0.0.0", port=5000, debug=True)

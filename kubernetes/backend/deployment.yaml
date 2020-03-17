@@ -14,9 +14,12 @@ spec:
         demo-app: backend
     spec:
       volumes:
-      - name: demo-app-secrets-volume
+      - name: demo-app-secrets-volume-cloudsql
         secret:
           secretName: cloudsql-instance-credentials
+      - name: demo-app-secrets-volume-cloudlogging
+        secret:
+          secretName: cloudlogging-writer-credentials
       containers:
       - name: "demo-app-backend"
         image: "gcr.io/GCP_PROJECT/demo-app-backend:latest"
@@ -40,6 +43,8 @@ spec:
           value: demo-app
         - name: POSTGRES_SERVER
           value: 127.0.0.1:5432
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: /secrets/cloudlogging
       - name: cloudsql-proxy
         image: "gcr.io/cloudsql-docker/gce-proxy:latest"
         command: ["/cloud_sql_proxy", "-instances=SQL_CONNECTION_NAME=tcp:5432", "-credential_file=/secrets/cloudsql/credentials.json"]
@@ -54,7 +59,10 @@ spec:
           runAsUser: 2  # non-root user
           allowPrivilegeEscalation: false
         volumeMounts:
-        - name: demo-app-secrets-volume
+        - name: demo-app-secrets-volume-cloudsql
           mountPath: /secrets/cloudsql
+          readOnly: true
+        - name: demo-app-secrets-volume-cloudlogging
+          mountPath: /secrets/cloudlogging
           readOnly: true
       restartPolicy: "Always"

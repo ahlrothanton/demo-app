@@ -30,13 +30,11 @@ Classical three-tier web application. Frontend is written with VueJS, and it run
 
 Single page Vue.js application, that let's users vote for their favourite 90's action movie heroes.
 
-Runs of nginx. Uses axios library, to do API calls.
+Uses axios library, to do API calls.
 
 ### Backend
 
-Python FastAPI application, that uses the REST API model.
-
-Just updates the scores in database, or inserts new action heroes(should throw 500).
+REST API written in Python using FastAPI framework.
 
 ### Database
 
@@ -47,8 +45,8 @@ Single Postgresql database in Google Cloud SQL.
 - single table    - actors
   - actor_id(pk)  - serial
   - first_name    - Arnold
-  - last_name     -  Schwarzenegger
+  - last_name     - Schwarzenegger
   - votes         - 0
-  - imgage_link   - 'images/arnold.png'
+  - imgage_link   - arnold.png
   - created_on    - TIMESTAMP
   - last_modified - TIMESTAMP

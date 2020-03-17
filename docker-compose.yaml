@@ -17,6 +17,7 @@ services:
       - "POSTGRES_CONNECTION=postgres"
       - "POSTGRES_DB=postgres"
       - "BACKEND_CORS_ORIGINS=*"
+      - "GOOGLE_ENABLE_CLOUD_LOGGING=false"
     depends_on:
       - "demo-app-db"
     links:

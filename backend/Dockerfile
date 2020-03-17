@@ -7,8 +7,6 @@ COPY ./app /usr/src/app
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
-ENV PORT 5000
-
 EXPOSE 5000
 
 CMD python main.py

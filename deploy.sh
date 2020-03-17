@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 ###############################################################################
 # Description:
-#    Script to deploy/undeploy demo-app infrastructure
+#    Script to deploy/undeploy demo-app infrastructure on GCP(GKE, GCR, Cloud SQL)
 #
 # Dependencies:
-#    google-cloud-sdk(gcloud), kubectl, docker
+#    google-cloud-sdk(gcloud, gsutil), kubectl, docker
 #
 # Usage:
 #     ./deploy.sh GCP_PROJECT_NAME
@@ -51,6 +51,15 @@ function undeploy {
             gcloud iam service-accounts delete ${SA} -q
         done
     fi
+    gcloud iam service-accounts list | grep "backend-sa" > /dev/null 2>&1
+    if [[ $? -eq 0 ]]; then
+        for SA in $(gcloud iam service-accounts list | grep "backend-sa" | awk '{ print $2 }' ); do
+            echo "  deleting iam service-account: ${SA}"
+            gcloud iam service-accounts delete ${SA} -q
+        done
+    fi
+
+    echo "Created GCP resources deleted. Logs and disks need to be manually deleted!"
 }
 
 function deploy {
@@ -71,10 +80,10 @@ function deploy {
 
     # create cloud sql instance, if it doesn't exist
     set +e
-    gcloud sql instances describe "${GCP_SQL_NAME}" > /dev/null 2>&1
+    gcloud sql instances describe "${APP_NAME}-sql-${UUID}" > /dev/null 2>&1
     if [[ $? -ne 0 ]]; then
-        echo "  creating Cloud SQL instance ${GCP_SQL_NAME}"
-        gcloud sql instances create "${GCP_SQL_NAME}" \
+        echo "  creating Cloud SQL instance ${APP_NAME}-sql-${UUID}"
+        gcloud sql instances create "${APP_NAME}-sql-${UUID}" \
             --zone "${GCP_COMPUTE_ZONE}" \
             --database-version=POSTGRES_11 \
             --memory 4 \
@@ -83,18 +92,18 @@ function deploy {
     set -e
 
     # create cloud sql database
-    gcloud sql databases create "${APP_NAME}" --instance="${GCP_SQL_NAME}"
+    gcloud sql databases create "${APP_NAME}" --instance="${APP_NAME}-sql-${UUID}"
 
     # create cloud sql user
-    gcloud sql users set-password postgres --instance "${GCP_SQL_NAME}" --password "postgres123" # TODO: hardcoded pw..
+    gcloud sql users set-password postgres --instance "${APP_NAME}-sql-${UUID}" --password "postgres123" # TODO: hardcoded pw..
     
     # set permissions for Cloud SQL service account to access the GCS bucket
-    SA_NAME=$(gcloud sql instances describe ${GCP_SQL_NAME} --project=${GCP_PROJECT} --format="value(serviceAccountEmailAddress)")
+    SA_NAME=$(gcloud sql instances describe ${APP_NAME}-sql-${UUID} --project=${GCP_PROJECT} --format="value(serviceAccountEmailAddress)")
     gsutil acl ch -u ${SA_NAME}:R "gs://${GCP_BUCKET_NAME}";
     gsutil acl ch -u ${SA_NAME}:R "gs://${GCP_BUCKET_NAME}/init-db.sql";
 
     # import data into cloud sql
-    gcloud sql import sql "${GCP_SQL_NAME}" \
+    gcloud sql import sql "${APP_NAME}-sql-${UUID}" \
         "gs://${GCP_BUCKET_NAME}/init-db.sql" \
         --database="${APP_NAME}" -q
 
@@ -116,32 +125,42 @@ function deploy {
     # set gke cluster credentials for kubectl
     gcloud container clusters get-credentials "${APP_NAME}-cluster"
 
+    # enable Cloud SQL Admin API
+    gcloud services enable sqladmin.googleapis.com
+
     # create iam user for cloud proxy
-    gcloud iam service-accounts create "${SQL_PROXY_USER}" --display-name "${SQL_PROXY_USER}"
+    gcloud iam service-accounts create "sqlproxy-sa-${UUID}" --display-name "sqlproxy-sa-${UUID}"
     gcloud projects add-iam-policy-binding "${GCP_PROJECT}" \
-        --member serviceAccount:"${SQL_PROXY_USER}@${GCP_PROJECT}.iam.gserviceaccount.com" \
+        --member serviceAccount:"sqlproxy-sa-${UUID}@${GCP_PROJECT}.iam.gserviceaccount.com" \
         --role roles/cloudsql.client
 
     # create kubernetes secret from the user credentials
-    gcloud iam service-accounts keys create key.json --iam-account "${SQL_PROXY_USER}@${GCP_PROJECT}.iam.gserviceaccount.com"
+    gcloud iam service-accounts keys create key.json --iam-account "sqlproxy-sa-${UUID}@${GCP_PROJECT}.iam.gserviceaccount.com"
     kubectl create secret generic cloudsql-instance-credentials --from-file=credentials.json=key.json
     rm -rf key.json
 
     # TODO: db credentials as a secret instead hard coding
     # kubectl create secret generic cloudsql-db-credentials --from-literal=username=[DB_USER] --from-literal=password=[DB_PASS] --from-literal=dbname=[DB_NAME]
 
-    # get Cloud SQL instance connection name
-    SQL_CONNECTION_NAME=$(gcloud sql instances describe "${GCP_SQL_NAME}" | grep connectionName | awk '{print $2}')
-
-    # enable Cloud SQL Admin API
-    gcloud services enable sqladmin.googleapis.com
-
     ### backend
-    # VUE_APP_API_URL='http://127.0.0.1:5000/api'
+
+    # create iam user for backend so it can write to Cloud Logging
+    gcloud iam service-accounts create "backend-sa-${UUID}" --display-name "backend-sa-${UUID}"
+    gcloud projects add-iam-policy-binding "${GCP_PROJECT}" \
+        --member serviceAccount:"backend-sa-${UUID}@${GCP_PROJECT}.iam.gserviceaccount.com" \
+        --role roles/logging.logWriter
+
+    # create kubernetes secret from the user credentials
+    gcloud iam service-accounts keys create key.json --iam-account "backend-sa-${UUID}@${GCP_PROJECT}.iam.gserviceaccount.com"
+    kubectl create secret generic cloudlogging-writer-credentials --from-file=credentials.json=key.json
+    rm -rf key.json
 
     # build and push docker image to gcr
     [ ! -z $(docker images -q gcr.io/${GCP_PROJECT}/demo-app-backend:latest) ] || docker build -t "gcr.io/${GCP_PROJECT}/demo-app-backend:latest" "${SCRIPT_PATH}/backend/"
     docker push "gcr.io/${GCP_PROJECT}/demo-app-backend:latest"
+
+    # get Cloud SQL instance connection name
+    SQL_CONNECTION_NAME=$(gcloud sql instances describe "${APP_NAME}-sql-${UUID}" | grep connectionName | awk '{print $2}')
     
     # deploy backend to kubernetes
     sed -ie "s/SQL_CONNECTION_NAME/${SQL_CONNECTION_NAME}/g" kubernetes/backend/deployment.yaml
@@ -194,8 +213,11 @@ GCP_COMPUTE_REGION=$(gcloud config get-value compute/region 2> /dev/null)
 GCP_COMPUTE_ZONE=$(gcloud config get-value compute/zone 2> /dev/null)
 APP_NAME=demo-app
 GCP_BUCKET_NAME="${GCP_PROJECT}-${APP_NAME}-temp-bucket"
-GCP_SQL_NAME="${APP_NAME}-sql-$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c 13 ; echo)" # workaround: Cloud SQL prevents using the same name for a week
-SQL_PROXY_USER="sqlproxy-sa-$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c 13 ; echo)" # workaround: https://cloud.google.com/iam/docs/understanding-service-accounts#deleting_and_recreating_service_accounts
+
+# workaround:
+#   Cloud SQL prevents using the same name for a week
+#   and https://cloud.google.com/iam/docs/understanding-service-accounts#deleting_and_recreating_service_accounts
+UUID=$(LC_ALL=C tr -dc 'a-z' </dev/urandom | head -c 13 ; echo) 
 
 while true; do
     echo

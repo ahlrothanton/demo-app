@@ -10,7 +10,7 @@
     </div>
     <div>
       <div class="footer">
-        <h1>Who's your favourite <strong>90's action hero</strong>?</h1>
+        <h3>You are visitor <strong>#{{ visitor }}</strong>!</h3>
       </div>
     </div>
   </div>
@@ -22,6 +22,11 @@ import Actors from './components/Actors.vue'
 
 export default {
   name: 'App',
+  data() {
+    return {
+      visitor: 10,
+    };
+  },
   components: {
     Actors
   }
@@ -34,8 +39,7 @@ export default {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-align: center;
-    color: #2c3e50;
-    margin-top: 60px;
+    color: black;
   }
 
   html {
@@ -47,10 +51,12 @@ export default {
   }
 
   .header {
+    height: 50px;
     background: white;
   }
   
   .footer {
+    height: 30px;
     background: white;
   }
 </style>
